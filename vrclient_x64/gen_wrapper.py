@@ -635,7 +635,7 @@ def get_iface_version(classname):
         ver = "UNVERSIONED"
     if classname in class_versions.keys() and ver in class_versions[classname]:
         return (ver, True)
-    if not classname in class_versions.keys():
+    if classname not in class_versions.keys():
         class_versions[classname] = []
     class_versions[classname].append(ver)
     return (ver, False)
@@ -657,7 +657,7 @@ def get_capi_thunk_params(method):
 def handle_class(sdkver, classnode):
     print("handle_class: " + classnode.displayname)
     children = list(classnode.get_children())
-    if len(children) == 0:
+    if not children:
         return
     (iface_version, already_generated) = get_iface_version(classnode.spelling)
     if already_generated:
@@ -757,9 +757,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(vrclient);
     cfile.write("    struct thunk **vtable = HeapAlloc(GetProcessHeap(), 0, %d * sizeof(*vtable));\n" % len(methods))
     cfile.write("    int i;\n\n")
     cfile.write("    TRACE(\"-> %p, vtable %p, thunks %p\\n\", r, vtable, thunks);\n")
+    global max_c_api_param_count
     for i in range(len(methods)):
         thunk_params = get_capi_thunk_params(methods[i])
-        global max_c_api_param_count
         max_c_api_param_count = max(len(get_params(methods[i])), max_c_api_param_count)
         cfile.write("    init_thunk(&thunks[%d], r, %s_%s, %s);\n" % (i, winclassname, method_names[i], thunk_params))
     cfile.write("    for (i = 0; i < %d; i++)\n" % len(methods))
@@ -869,9 +869,9 @@ def struct_needs_conversion_nocache(struct):
     return False
 
 def struct_needs_conversion(struct):
-    if not sdkver in struct_conversion_cache:
+    if sdkver not in struct_conversion_cache:
         struct_conversion_cache[sdkver] = {}
-    if not strip_const(struct.spelling) in struct_conversion_cache[sdkver]:
+    if strip_const(struct.spelling) not in struct_conversion_cache[sdkver]:
         struct_conversion_cache[sdkver][strip_const(struct.spelling)] = struct_needs_conversion_nocache(struct)
     return struct_conversion_cache[sdkver][strip_const(struct.spelling)]
 
@@ -1204,7 +1204,7 @@ def generate_c_api_method_test(f, header, thunks_c, class_name, method_name, met
             return "HmdColor"
         elif param_size == 8:
             return "uint64"
-        elif param_size == 4 or param_size == 2:
+        elif param_size in [4, 2]:
             return "uint32"
         else:
             return "unknown"
@@ -1346,7 +1346,7 @@ for sdkver in sdk_versions:
         linux_build64 = index.parse(input_name, args=['-x', 'c++', '-m64', '-std=c++11', '-DGNUC', '-Iopenvr_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
 
         diagnostics = list(tu.diagnostics)
-        if len(diagnostics) > 0:
+        if diagnostics:
             print('There were parse errors')
             pprint.pprint(diagnostics)
         else:
@@ -1356,8 +1356,10 @@ for sdkver in sdk_versions:
                     for vrchild in list(child.get_children()):
                         if vrchild.kind == clang.cindex.CursorKind.CLASS_DECL and vrchild.displayname in classes:
                             handle_class(sdkver, vrchild)
-                        if vrchild.kind == clang.cindex.CursorKind.STRUCT_DECL or \
-                                vrchild.kind == clang.cindex.CursorKind.CLASS_DECL:
+                        if vrchild.kind in [
+                            clang.cindex.CursorKind.STRUCT_DECL,
+                            clang.cindex.CursorKind.CLASS_DECL,
+                        ]:
                             handle_struct(sdkver, vrchild)
                         if vrchild.displayname in print_sizes:
                             sys.stdout.write("size of %s is %u\n" % (vrchild.displayname, vrchild.type.get_size()))
