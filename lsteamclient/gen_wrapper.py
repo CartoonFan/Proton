@@ -1,18 +1,18 @@
 #!/usr/bin/env python2
 
-#NOTE: If you make modifications here, consider whether they should
-#be duplicated in ../vrclient/gen_wrapper.py
+# NOTE: If you make modifications here, consider whether they should
+# be duplicated in ../vrclient/gen_wrapper.py
 
 from __future__ import print_function
 
-CLANG_PATH='/usr/lib/clang/10.0.0'
-
-import pprint
-import sys
-import clang.cindex
-import os
-import re
 import math
+import re
+import os
+import clang.cindex
+import sys
+import pprint
+CLANG_PATH = '/usr/lib/clang/10.0.0'
+
 
 sdk_versions = [
     "148a",
@@ -152,86 +152,86 @@ files = [
 ]
 
 aliases = {
-    #these interfaces are undocumented and binary compatible
-    #"target interface": ["alias 1", "alias 2"],
-    "SteamUtils004":["SteamUtils003"],
-    "SteamUtils002":["SteamUtils001"],
-    "SteamGameServer008":["SteamGameServer007","SteamGameServer006"],
-    "SteamNetworkingSocketsSerialized002":["SteamNetworkingSocketsSerialized001"],
-    "STEAMAPPS_INTERFACE_VERSION001":["SteamApps001"],
-    "STEAMAPPS_INTERFACE_VERSION001":["SteamApps001"],
-    "SteamNetworkingSockets002":["SteamNetworkingSockets003"],
+    # these interfaces are undocumented and binary compatible
+    # "target interface": ["alias 1", "alias 2"],
+    "SteamUtils004": ["SteamUtils003"],
+    "SteamUtils002": ["SteamUtils001"],
+    "SteamGameServer008": ["SteamGameServer007", "SteamGameServer006"],
+    "SteamNetworkingSocketsSerialized002": ["SteamNetworkingSocketsSerialized001"],
+    "STEAMAPPS_INTERFACE_VERSION001": ["SteamApps001"],
+    "STEAMAPPS_INTERFACE_VERSION001": ["SteamApps001"],
+    "SteamNetworkingSockets002": ["SteamNetworkingSockets003"],
 }
 
 # these structs are manually confirmed to be equivalent
 exempt_structs = [
-        "CSteamID",
-        "CGameID",
-        "CCallbackBase",
-        "SteamPS3Params_t",
-        "ValvePackingSentinel_t"
+    "CSteamID",
+    "CGameID",
+    "CCallbackBase",
+    "SteamPS3Params_t",
+    "ValvePackingSentinel_t"
 ]
 
 # we have converters for these written by hand because they're too complicated to generate
 manually_handled_structs = [
-        "SteamNetworkingMessage_t"
+    "SteamNetworkingMessage_t"
 ]
 
 manually_handled_methods = {
-        #TODO: 001
-        "cppISteamNetworkingSockets_SteamNetworkingSockets002": [
-            "ReceiveMessagesOnConnection",
-            "ReceiveMessagesOnListenSocket"
-        ],
-        # 003 never appeared in a public SDK, but is an alias for 002 (the version in SDK 1.45 is actually 004 but incorrectly versioned as 003)
-        "cppISteamNetworkingSockets_SteamNetworkingSockets004": [
-            "ReceiveMessagesOnConnection",
-            "ReceiveMessagesOnListenSocket",
-        ],
-        #TODO: 005
-        "cppISteamNetworkingSockets_SteamNetworkingSockets006": [
-            "ReceiveMessagesOnConnection",
-            "ReceiveMessagesOnListenSocket",
-            "SendMessages"
-        ],
-        #TODO: 007
-        "cppISteamNetworkingSockets_SteamNetworkingSockets008": [
-            "ReceiveMessagesOnConnection",
-            "ReceiveMessagesOnPollGroup",
-            "SendMessages"
-        ],
-        "cppISteamNetworkingUtils_SteamNetworkingUtils003": [
-            "AllocateMessage",
-        ],
+    # TODO: 001
+    "cppISteamNetworkingSockets_SteamNetworkingSockets002": [
+        "ReceiveMessagesOnConnection",
+        "ReceiveMessagesOnListenSocket"
+    ],
+    # 003 never appeared in a public SDK, but is an alias for 002 (the version in SDK 1.45 is actually 004 but incorrectly versioned as 003)
+    "cppISteamNetworkingSockets_SteamNetworkingSockets004": [
+        "ReceiveMessagesOnConnection",
+        "ReceiveMessagesOnListenSocket",
+    ],
+    # TODO: 005
+    "cppISteamNetworkingSockets_SteamNetworkingSockets006": [
+        "ReceiveMessagesOnConnection",
+        "ReceiveMessagesOnListenSocket",
+        "SendMessages"
+    ],
+    # TODO: 007
+    "cppISteamNetworkingSockets_SteamNetworkingSockets008": [
+        "ReceiveMessagesOnConnection",
+        "ReceiveMessagesOnPollGroup",
+        "SendMessages"
+    ],
+    "cppISteamNetworkingUtils_SteamNetworkingUtils003": [
+        "AllocateMessage",
+    ],
 }
 
 # manual converters for simple types (function pointers)
 manual_type_converters = [
-        "FSteamNetworkingSocketsDebugOutput",
-        "SteamAPI_CheckCallbackRegistered_t"
+    "FSteamNetworkingSocketsDebugOutput",
+    "SteamAPI_CheckCallbackRegistered_t"
 ]
 
 # manual converters for specific parameters
 manual_param_converters = [
-        "nNativeKeyCode"
+    "nNativeKeyCode"
 ]
 
-#struct_conversion_cache = {
+# struct_conversion_cache = {
 #    '142': {
 #                'SteamUGCDetails_t': True,
 #                'SteamUGCQueryCompleted_t': False
 #           }
-#}
+# }
 struct_conversion_cache = {}
 
 converted_structs = []
 
 # callback classes for which we have a linux wrapper
 wrapped_classes = [
-        "ISteamMatchmakingServerListResponse",
-        "ISteamMatchmakingPingResponse",
-        "ISteamMatchmakingPlayersResponse",
-        "ISteamMatchmakingRulesResponse"
+    "ISteamMatchmakingServerListResponse",
+    "ISteamMatchmakingPingResponse",
+    "ISteamMatchmakingPlayersResponse",
+    "ISteamMatchmakingRulesResponse"
 ]
 
 print_sizes = []
@@ -239,311 +239,313 @@ print_sizes = []
 class_versions = {}
 
 path_conversions = [
-        {
-            "parent_name": "GetAppInstallDir",
-            "l2w_names": ["pchDirectory"],
-            "l2w_lens": ["cchNameMax"],
-            "l2w_urls": [False],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": True
-        },
-        {
-            "parent_name": "GetAppInstallDir",
-            "l2w_names": ["pchFolder"],
-            "l2w_lens": ["cchFolderBufferSize"],
-            "l2w_urls": [False],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": True
-        },
-        {
-            "parent_name": "GetFileDetails",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszFileName"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": True
-        },
-        {
-            "parent_name": "GetGlyphForActionOrigin",
-            "l2w_names": [None], #return value
-            "l2w_lens": [None],
-            "l2w_urls": [None],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        ### ISteamGameServer::SetModDir - "Just the folder name, not the whole path. I.e. "Spacewar"."
-        {
-            "parent_name": "LoadURL",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchURL"],
-            "w2l_arrays": [False],
-            "w2l_urls": [True],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "FileLoadDialogResponse",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchSelectedFiles"],
-            "w2l_arrays": [True],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_StartRequest_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_URLChanged_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_FinishedRequest_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_OpenLinkInNewTab_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_LinkAtPosition_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_FileOpenDialog_t",
-            "l2w_names": ["pchInitialFile"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "HTML_NewWindow_t",
-            "l2w_names": ["pchURL"],
-            "l2w_lens": [None],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "PublishWorkshopFile",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchFile", "pchPreviewFile"],
-            "w2l_arrays": [False, False],
-            "w2l_urls": [False, False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "UpdatePublishedFileFile",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "UpdatePublishedFilePreviewFile",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchPreviewFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "PublishVideo",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchPreviewFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "AddScreenshotToLibrary",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchFilename", "pchThumbnailFilename"],
-            "w2l_arrays": [False, False],
-            "w2l_urls": [False, False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "AddVRScreenshotToLibrary",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchFilename", "pchVRFilename"],
-            "w2l_arrays": [False, False],
-            "w2l_urls": [False, False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "UGCDownloadToLocation",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchLocation"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "GetQueryUGCAdditionalPreview",
-            "l2w_names": ["pchURLOrVideoID"],
-            "l2w_lens": ["cchURLSize"],
-            "l2w_urls": [True],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "SetItemContent",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszContentFolder"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "SetItemPreview",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszPreviewFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "AddItemPreviewFile",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszPreviewFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "UpdateItemPreviewFile",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszPreviewFile"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "GetItemInstallInfo",
-            "l2w_names": ["pchFolder"],
-            "l2w_lens": ["cchFolderSize"],
-            "l2w_urls": [False],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "BInitWorkshopForGameServer",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pszFolder"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "GetUserDataFolder",
-            "l2w_names": ["pchBuffer"],
-            "l2w_lens": ["cubBuffer"],
-            "l2w_urls": [False],
-            "w2l_names": [],
-            "w2l_arrays": [],
-            "w2l_urls": [],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "CheckFileSignature",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["szFileName"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        },
-        {
-            "parent_name": "Init",
-            "l2w_names": [],
-            "l2w_lens": [],
-            "l2w_urls": [],
-            "w2l_names": ["pchAbsolutePathToControllerConfigVDF"],
-            "w2l_arrays": [False],
-            "w2l_urls": [False],
-            "return_is_size": False
-        }
+    {
+        "parent_name": "GetAppInstallDir",
+        "l2w_names": ["pchDirectory"],
+        "l2w_lens": ["cchNameMax"],
+        "l2w_urls": [False],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": True
+    },
+    {
+        "parent_name": "GetAppInstallDir",
+        "l2w_names": ["pchFolder"],
+        "l2w_lens": ["cchFolderBufferSize"],
+        "l2w_urls": [False],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": True
+    },
+    {
+        "parent_name": "GetFileDetails",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszFileName"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": True
+    },
+    {
+        "parent_name": "GetGlyphForActionOrigin",
+        "l2w_names": [None],  # return value
+        "l2w_lens": [None],
+        "l2w_urls": [None],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    # ISteamGameServer::SetModDir - "Just the folder name, not the whole path. I.e. "Spacewar"."
+    {
+        "parent_name": "LoadURL",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchURL"],
+        "w2l_arrays": [False],
+        "w2l_urls": [True],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "FileLoadDialogResponse",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchSelectedFiles"],
+        "w2l_arrays": [True],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_StartRequest_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_URLChanged_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_FinishedRequest_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_OpenLinkInNewTab_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_LinkAtPosition_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_FileOpenDialog_t",
+        "l2w_names": ["pchInitialFile"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "HTML_NewWindow_t",
+        "l2w_names": ["pchURL"],
+        "l2w_lens": [None],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "PublishWorkshopFile",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchFile", "pchPreviewFile"],
+        "w2l_arrays": [False, False],
+        "w2l_urls": [False, False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "UpdatePublishedFileFile",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "UpdatePublishedFilePreviewFile",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchPreviewFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "PublishVideo",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchPreviewFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "AddScreenshotToLibrary",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchFilename", "pchThumbnailFilename"],
+        "w2l_arrays": [False, False],
+        "w2l_urls": [False, False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "AddVRScreenshotToLibrary",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchFilename", "pchVRFilename"],
+        "w2l_arrays": [False, False],
+        "w2l_urls": [False, False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "UGCDownloadToLocation",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchLocation"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "GetQueryUGCAdditionalPreview",
+        "l2w_names": ["pchURLOrVideoID"],
+        "l2w_lens": ["cchURLSize"],
+        "l2w_urls": [True],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "SetItemContent",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszContentFolder"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "SetItemPreview",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszPreviewFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "AddItemPreviewFile",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszPreviewFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "UpdateItemPreviewFile",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszPreviewFile"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "GetItemInstallInfo",
+        "l2w_names": ["pchFolder"],
+        "l2w_lens": ["cchFolderSize"],
+        "l2w_urls": [False],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "BInitWorkshopForGameServer",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pszFolder"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "GetUserDataFolder",
+        "l2w_names": ["pchBuffer"],
+        "l2w_lens": ["cubBuffer"],
+        "l2w_urls": [False],
+        "w2l_names": [],
+        "w2l_arrays": [],
+        "w2l_urls": [],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "CheckFileSignature",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["szFileName"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    },
+    {
+        "parent_name": "Init",
+        "l2w_names": [],
+        "l2w_lens": [],
+        "l2w_urls": [],
+        "w2l_names": ["pchAbsolutePathToControllerConfigVDF"],
+        "w2l_arrays": [False],
+        "w2l_urls": [False],
+        "return_is_size": False
+    }
 ]
+
 
 def strip_const(typename):
     return typename.replace("const ", "", 1)
+
 
 def find_windows_struct(struct):
     for child in list(windows_build.cursor.get_children()):
@@ -551,11 +553,13 @@ def find_windows_struct(struct):
             return child.type
     return None
 
+
 def find_windows64_struct(struct):
     for child in list(windows_build64.cursor.get_children()):
         if strip_const(struct.spelling) == child.spelling:
             return child.type
     return None
+
 
 def find_linux64_struct(struct):
     for child in list(linux_build64.cursor.get_children()):
@@ -563,15 +567,16 @@ def find_linux64_struct(struct):
             return child.type
     return None
 
+
 def struct_needs_conversion_nocache(struct):
     if strip_const(struct.spelling) in exempt_structs:
         return False
     if strip_const(struct.spelling) in manually_handled_structs:
         return True
 
-    #check 32-bit compat
+    # check 32-bit compat
     windows_struct = find_windows_struct(struct)
-    assert(not windows_struct is None) #must find windows_struct
+    assert(not windows_struct is None)  # must find windows_struct
     for field in struct.get_fields():
         if struct.get_offset(field.spelling) != windows_struct.get_offset(field.spelling):
             return True
@@ -579,11 +584,11 @@ def struct_needs_conversion_nocache(struct):
                 struct_needs_conversion(field.type):
             return True
 
-    #check 64-bit compat
+    # check 64-bit compat
     windows_struct = find_windows64_struct(struct)
-    assert(not windows_struct is None) #must find windows_struct
+    assert(not windows_struct is None)  # must find windows_struct
     lin64_struct = find_linux64_struct(struct)
-    assert(not lin64_struct is None) #must find lin64_struct
+    assert(not lin64_struct is None)  # must find lin64_struct
     for field in lin64_struct.get_fields():
         if lin64_struct.get_offset(field.spelling) != windows_struct.get_offset(field.spelling):
             return True
@@ -591,23 +596,28 @@ def struct_needs_conversion_nocache(struct):
                 struct_needs_conversion(field.type):
             return True
 
-    #check if any members need path conversion
+    # check if any members need path conversion
     path_conv = get_path_converter(struct)
     if path_conv:
         return True
     return False
 
+
 def struct_needs_conversion(struct):
     if sdkver not in struct_conversion_cache:
         struct_conversion_cache[sdkver] = {}
     if strip_const(struct.spelling) not in struct_conversion_cache[sdkver]:
-        struct_conversion_cache[sdkver][strip_const(struct.spelling)] = struct_needs_conversion_nocache(struct)
+        struct_conversion_cache[sdkver][strip_const(
+            struct.spelling)] = struct_needs_conversion_nocache(struct)
     return struct_conversion_cache[sdkver][strip_const(struct.spelling)]
+
 
 def handle_destructor(cfile, classname, winclassname, method):
     cfile.write("DEFINE_THISCALL_WRAPPER(%s_destructor, 4)\n" % winclassname)
-    cfile.write("void __thiscall %s_destructor(%s *_this)\n{/* never called */}\n\n" % (winclassname, winclassname))
+    cfile.write(
+        "void __thiscall %s_destructor(%s *_this)\n{/* never called */}\n\n" % (winclassname, winclassname))
     return "destructor"
+
 
 def get_path_converter(parent):
     for conv in path_conversions:
@@ -624,17 +634,21 @@ def get_path_converter(parent):
                     return conv
     return None
 
+
 class DummyWriter(object):
     def write(self, s):
-        #noop
+        # noop
         pass
+
 
 def to_c_bool(b):
     if b:
         return "1"
     return "0"
 
+
 dummy_writer = DummyWriter()
+
 
 def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, existing_methods):
     used_name = method.spelling
@@ -647,19 +661,21 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
         existing_methods.insert(idx, used_name)
     else:
         existing_methods.append(used_name)
-    returns_record = method.result_type.get_canonical().kind == clang.cindex.TypeKind.RECORD
+    returns_record = method.result_type.get_canonical(
+    ).kind == clang.cindex.TypeKind.RECORD
     if returns_record:
-        parambytes = 8 #_this + return pointer
+        parambytes = 8  # _this + return pointer
     else:
-        parambytes = 4 #_this
+        parambytes = 4  # _this
     for param in list(method.get_children()):
         if param.kind == clang.cindex.CursorKind.PARM_DECL:
             parambytes += int(math.ceil(param.type.get_size()/4.0) * 4)
     if cppname in manually_handled_methods and \
             used_name in manually_handled_methods[cppname]:
-        #just don't write the cpp function
+        # just don't write the cpp function
         cpp = dummy_writer
-    cfile.write("DEFINE_THISCALL_WRAPPER(%s_%s, %s)\n" % (winclassname, used_name, parambytes))
+    cfile.write("DEFINE_THISCALL_WRAPPER(%s_%s, %s)\n" %
+                (winclassname, used_name, parambytes))
     cpp_h.write("extern ")
     if method.result_type.spelling.startswith("ISteam"):
         cfile.write("win%s " % (method.result_type.spelling))
@@ -673,7 +689,8 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
         cfile.write("%s " % (method.result_type.spelling))
         cpp.write("%s " % (method.result_type.spelling))
         cpp_h.write("%s " % (method.result_type.spelling))
-    cfile.write('__thiscall %s_%s(%s *_this' % (winclassname, used_name, winclassname))
+    cfile.write('__thiscall %s_%s(%s *_this' %
+                (winclassname, used_name, winclassname))
     cpp.write("%s_%s(void *linux_side" % (cppname, used_name))
     cpp_h.write("%s_%s(void *" % (cppname, used_name))
     if returns_record:
@@ -685,12 +702,12 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
         if param.kind == clang.cindex.CursorKind.PARM_DECL:
             if param.type.kind == clang.cindex.TypeKind.POINTER and \
                     param.type.get_pointee().kind == clang.cindex.TypeKind.FUNCTIONPROTO:
-                #unspecified function pointer
+                # unspecified function pointer
                 typename = "void *"
             else:
-                typename = param.type.spelling.split("::")[-1];
+                typename = param.type.spelling.split("::")[-1]
 
-            real_type = param.type;
+            real_type = param.type
             while real_type.kind == clang.cindex.TypeKind.POINTER:
                 real_type = real_type.get_pointee()
             win_name = typename
@@ -698,8 +715,9 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
                     not real_type.spelling in wrapped_classes and \
                     struct_needs_conversion(real_type):
                 need_convert.append(param)
-                #preserve pointers
-                win_name = typename.replace(real_type.spelling, "win%s_%s" % (real_type.spelling, sdkver))
+                # preserve pointers
+                win_name = typename.replace(
+                    real_type.spelling, "win%s_%s" % (real_type.spelling, sdkver))
             elif real_type.spelling in manual_type_converters:
                 manual_convert.append(param)
             elif param.spelling in manual_param_converters:
@@ -723,12 +741,15 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
     if path_conv:
         for i in range(len(path_conv["w2l_names"])):
             if path_conv["w2l_arrays"][i]:
-                cfile.write("    const char **lin_%s = steamclient_dos_to_unix_stringlist(%s);\n" % (path_conv["w2l_names"][i], path_conv["w2l_names"][i]))
+                cfile.write("    const char **lin_%s = steamclient_dos_to_unix_stringlist(%s);\n" %
+                            (path_conv["w2l_names"][i], path_conv["w2l_names"][i]))
                 # TODO
                 pass
             else:
-                cfile.write("    char lin_%s[PATH_MAX];\n" % path_conv["w2l_names"][i])
-                cfile.write("    steamclient_dos_path_to_unix_path(%s, lin_%s, %s);\n" % (path_conv["w2l_names"][i], path_conv["w2l_names"][i], to_c_bool(path_conv["w2l_urls"][i])))
+                cfile.write("    char lin_%s[PATH_MAX];\n" %
+                            path_conv["w2l_names"][i])
+                cfile.write("    steamclient_dos_path_to_unix_path(%s, lin_%s, %s);\n" % (
+                    path_conv["w2l_names"][i], path_conv["w2l_names"][i], to_c_bool(path_conv["w2l_urls"][i])))
         if None in path_conv["l2w_names"]:
             cfile.write("    const char *path_result;\n")
         elif path_conv["return_is_size"]:
@@ -738,23 +759,29 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
 
     for param in need_convert:
         if param.type.kind == clang.cindex.TypeKind.POINTER:
-            #handle single pointers, but not double pointers
-            real_type = param.type;
+            # handle single pointers, but not double pointers
+            real_type = param.type
             while real_type.kind == clang.cindex.TypeKind.POINTER:
                 real_type = real_type.get_pointee()
-            assert(param.type.get_pointee().kind == clang.cindex.TypeKind.RECORD or \
-                    strip_const(real_type.spelling) in manually_handled_structs)
-            cpp.write("    %s lin_%s;\n" % (strip_const(param.type.get_pointee().spelling), param.spelling))
-            cpp.write("    win_to_lin_struct_%s_%s(%s, &lin_%s);\n" % (strip_const(real_type.spelling), sdkver, param.spelling, param.spelling))
+            assert(param.type.get_pointee().kind == clang.cindex.TypeKind.RECORD or
+                   strip_const(real_type.spelling) in manually_handled_structs)
+            cpp.write("    %s lin_%s;\n" % (strip_const(
+                param.type.get_pointee().spelling), param.spelling))
+            cpp.write("    win_to_lin_struct_%s_%s(%s, &lin_%s);\n" % (
+                strip_const(real_type.spelling), sdkver, param.spelling, param.spelling))
         else:
-            #raw structs
-            cpp.write("    %s lin_%s;\n" % (param.type.spelling, param.spelling))
-            cpp.write("    win_to_lin_struct_%s_%s(&%s, &lin_%s);\n" % (param.type.spelling, sdkver, param.spelling, param.spelling))
+            # raw structs
+            cpp.write("    %s lin_%s;\n" %
+                      (param.type.spelling, param.spelling))
+            cpp.write("    win_to_lin_struct_%s_%s(&%s, &lin_%s);\n" % (
+                param.type.spelling, sdkver, param.spelling, param.spelling))
     for param in manual_convert:
         if param.spelling in manual_param_converters:
-            cpp.write("    %s = manual_convert_%s(%s);\n" % (param.spelling, param.spelling, param.spelling))
+            cpp.write("    %s = manual_convert_%s(%s);\n" %
+                      (param.spelling, param.spelling, param.spelling))
         else:
-            cpp.write("    %s = (%s)manual_convert_%s((void*)%s);\n" % (param.spelling, param.type.spelling, param.type.spelling, param.spelling))
+            cpp.write("    %s = (%s)manual_convert_%s((void*)%s);\n" %
+                      (param.spelling, param.type.spelling, param.type.spelling, param.spelling))
 
     cfile.write("    TRACE(\"%p\\n\", _this);\n")
 
@@ -776,10 +803,11 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
 
     should_do_cb_wrap = "GetAPICallResult" in used_name
     should_gen_wrapper = method.result_type.spelling.startswith("ISteam") or \
-            used_name.startswith("GetISteamGenericInterface")
+        used_name.startswith("GetISteamGenericInterface")
 
     if should_do_cb_wrap:
-        cfile.write("do_cb_wrap(0, _this->linux_side, &%s_%s" % (cppname, used_name))
+        cfile.write("do_cb_wrap(0, _this->linux_side, &%s_%s" %
+                    (cppname, used_name))
     else:
         if should_gen_wrapper:
             cfile.write("create_win_interface(pchVersion,\n        ")
@@ -799,10 +827,12 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
                 unnamed = chr(ord(unnamed) + 1)
             elif param.type.kind == clang.cindex.TypeKind.POINTER and \
                     param.type.get_pointee().spelling in wrapped_classes:
-                cfile.write(", create_Linux%s(%s, \"%s\")" % (param.type.get_pointee().spelling, param.spelling, winclassname))
+                cfile.write(", create_Linux%s(%s, \"%s\")" % (
+                    param.type.get_pointee().spelling, param.spelling, winclassname))
                 cpp.write("(%s)%s" % (param.type.spelling, param.spelling))
             elif path_conv and param.spelling in path_conv["w2l_names"]:
-                cfile.write(", %s ? lin_%s : NULL" % (param.spelling, param.spelling))
+                cfile.write(", %s ? lin_%s : NULL" %
+                            (param.spelling, param.spelling))
                 cpp.write("(%s)%s" % (param.type.spelling, param.spelling))
             elif param in need_convert:
                 cfile.write(", %s" % param.spelling)
@@ -825,30 +855,36 @@ def handle_method(cfile, classname, winclassname, cppname, method, cpp, cpp_h, e
                 cfile.write("    ")
                 if path_conv["return_is_size"]:
                     cfile.write("path_result = ")
-                cfile.write("steamclient_unix_path_to_dos_path(path_result, %s, %s, %s, %s);\n" % (path_conv["l2w_names"][i], path_conv["l2w_names"][i], path_conv["l2w_lens"][i], to_c_bool(path_conv["l2w_urls"][i])))
+                cfile.write("steamclient_unix_path_to_dos_path(path_result, %s, %s, %s, %s);\n" % (
+                    path_conv["l2w_names"][i], path_conv["l2w_names"][i], path_conv["l2w_lens"][i], to_c_bool(path_conv["l2w_urls"][i])))
             else:
-                #string is in return value
-                #ISteamController::GetGlyphForActionOrigin is the only user here for now
-                cfile.write("    path_result = steamclient_isteamcontroller_getglyph(eOrigin, path_result);\n")
+                # string is in return value
+                # ISteamController::GetGlyphForActionOrigin is the only user here for now
+                cfile.write(
+                    "    path_result = steamclient_isteamcontroller_getglyph(eOrigin, path_result);\n")
         cfile.write("    return path_result;\n")
     if path_conv:
         for i in range(len(path_conv["w2l_names"])):
             if path_conv["w2l_arrays"][i]:
-                cfile.write("    steamclient_free_stringlist(lin_%s);\n" % path_conv["w2l_names"][i])
+                cfile.write("    steamclient_free_stringlist(lin_%s);\n" %
+                            path_conv["w2l_names"][i])
     cfile.write("}\n\n")
     for param in need_convert:
         if param.type.kind == clang.cindex.TypeKind.POINTER:
-            if not "const " in param.type.spelling: #don't modify const arguments
-                real_type = param.type;
+            if not "const " in param.type.spelling:  # don't modify const arguments
+                real_type = param.type
                 while real_type.kind == clang.cindex.TypeKind.POINTER:
                     real_type = real_type.get_pointee()
-                cpp.write("    lin_to_win_struct_%s_%s(&lin_%s, %s);\n" % (real_type.spelling, sdkver, param.spelling, param.spelling))
+                cpp.write("    lin_to_win_struct_%s_%s(&lin_%s, %s);\n" % (
+                    real_type.spelling, sdkver, param.spelling, param.spelling))
         else:
-            cpp.write("    lin_to_win_struct_%s_%s(&lin_%s, &%s);\n" % (param.type.spelling, sdkver, param.spelling, param.spelling))
+            cpp.write("    lin_to_win_struct_%s_%s(&lin_%s, &%s);\n" % (
+                param.type.spelling, sdkver, param.spelling, param.spelling))
     if method.result_type.kind != clang.cindex.TypeKind.VOID and \
             len(need_convert) > 0:
         cpp.write("    return retval;\n")
     cpp.write("}\n\n")
+
 
 def get_iface_version(classname):
     # ISteamClient -> STEAMCLIENT_INTERFACE_VERSION
@@ -863,6 +899,7 @@ def get_iface_version(classname):
         class_versions[classname] = []
     class_versions[classname].append(ver)
     return (ver, False)
+
 
 def handle_class(sdkver, classnode):
     children = list(classnode.get_children())
@@ -902,7 +939,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(steamclient);
     cpp.write("#undef __cdecl\n")
     cpp.write("#include \"steamworks_sdk_%s/steam_api.h\"\n" % sdkver)
     if os.path.isfile("steamworks_sdk_%s/steamnetworkingtypes.h" % sdkver):
-        cpp.write("#include \"steamworks_sdk_%s/steamnetworkingtypes.h\"\n" % sdkver)
+        cpp.write(
+            "#include \"steamworks_sdk_%s/steamnetworkingtypes.h\"\n" % sdkver)
     if fname != "steam_api.h":
         cpp.write("#include \"steamworks_sdk_%s/%s\"\n" % (sdkver, fname))
     cpp.write("#pragma pop_macro(\"__cdecl\")\n")
@@ -924,9 +962,11 @@ WINE_DEFAULT_DEBUG_CHANNEL(steamclient);
     for child in children:
         if child.kind == clang.cindex.CursorKind.CXX_METHOD and \
                 child.is_virtual_method():
-            handle_method(cfile, classnode.spelling, winclassname, cppname, child, cpp, cpp_h, methods)
+            handle_method(cfile, classnode.spelling, winclassname,
+                          cppname, child, cpp, cpp_h, methods)
         elif child.kind == clang.cindex.CursorKind.DESTRUCTOR:
-            methods.append(handle_destructor(cfile, classnode.spelling, winclassname, child))
+            methods.append(handle_destructor(
+                cfile, classnode.spelling, winclassname, child))
 
     cfile.write("extern vtable_ptr %s_vtable;\n\n" % winclassname)
     cfile.write("#ifndef __GNUC__\n")
@@ -934,13 +974,16 @@ WINE_DEFAULT_DEBUG_CHANNEL(steamclient);
     cfile.write("#endif\n")
     cfile.write("    __ASM_VTABLE(%s,\n" % winclassname)
     for method in methods:
-        cfile.write("        VTABLE_ADD_FUNC(%s_%s)\n" % (winclassname, method))
+        cfile.write("        VTABLE_ADD_FUNC(%s_%s)\n" %
+                    (winclassname, method))
     cfile.write("    );\n")
     cfile.write("#ifndef __GNUC__\n")
     cfile.write("}\n")
     cfile.write("#endif\n\n")
-    cfile.write("%s *create_%s(void *linux_side)\n{\n" % (winclassname, winclassname))
-    cfile.write("    %s *r = HeapAlloc(GetProcessHeap(), 0, sizeof(%s));\n" % (winclassname, winclassname))
+    cfile.write(
+        "%s *create_%s(void *linux_side)\n{\n" % (winclassname, winclassname))
+    cfile.write("    %s *r = HeapAlloc(GetProcessHeap(), 0, sizeof(%s));\n" %
+                (winclassname, winclassname))
     cfile.write("    TRACE(\"-> %p\\n\", r);\n")
     cfile.write("    r->vtable = &%s_vtable;\n" % winclassname)
     cfile.write("    r->linux_side = linux_side;\n")
@@ -952,10 +995,12 @@ WINE_DEFAULT_DEBUG_CHANNEL(steamclient);
     constructors.write("extern void *create_%s(void *);\n" % winclassname)
 
     constructors = open("win_constructors_table.dat", "a")
-    constructors.write("    {\"%s\", &create_%s},\n" % (iface_version, winclassname))
+    constructors.write("    {\"%s\", &create_%s},\n" %
+                       (iface_version, winclassname))
     if iface_version in aliases.keys():
         for alias in aliases[iface_version]:
-            constructors.write("    {\"%s\", &create_%s}, /* alias */\n" % (alias, winclassname))
+            constructors.write(
+                "    {\"%s\", &create_%s}, /* alias */\n" % (alias, winclassname))
 
 
 generated_cb_handlers = []
@@ -963,6 +1008,7 @@ generated_cb_ids = []
 cpp_files_need_close_brace = []
 cb_table = {}
 cb_table64 = {}
+
 
 def get_field_attribute_str(field):
     if field.type.kind != clang.cindex.TypeKind.RECORD:
@@ -974,9 +1020,11 @@ def get_field_attribute_str(field):
         align = win_struct.get_align()
     return " __attribute__((aligned(" + str(align) + ")))"
 
-#because of struct packing differences between win32 and linux, we
-#need to convert these structs from their linux layout to the win32
-#layout.
+# because of struct packing differences between win32 and linux, we
+# need to convert these structs from their linux layout to the win32
+# layout.
+
+
 def handle_struct(sdkver, struct):
     members = struct.get_children()
     cb_num = None
@@ -999,16 +1047,20 @@ def handle_struct(sdkver, struct):
         for m in struct.get_children():
             if m.kind == clang.cindex.CursorKind.FIELD_DECL:
                 if m.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
-                    to_file.write("    %s %s[%u];\n" % (m.type.element_type.spelling, m.displayname, m.type.element_count))
+                    to_file.write("    %s %s[%u];\n" % (
+                        m.type.element_type.spelling, m.displayname, m.type.element_count))
                 elif m.type.kind == clang.cindex.TypeKind.RECORD and \
                         struct_needs_conversion(m.type):
-                    to_file.write("    win%s_%s %s;\n" % (m.type.spelling, sdkver, m.displayname))
+                    to_file.write("    win%s_%s %s;\n" %
+                                  (m.type.spelling, sdkver, m.displayname))
                 else:
                     if m.type.kind == clang.cindex.TypeKind.POINTER and \
                             m.type.get_pointee().kind == clang.cindex.TypeKind.FUNCTIONPROTO:
-                        to_file.write("    void *%s; /*fn pointer*/\n" % m.displayname)
+                        to_file.write(
+                            "    void *%s; /*fn pointer*/\n" % m.displayname)
                     else:
-                        to_file.write("    %s %s%s;\n" % (m.type.spelling, m.displayname, get_field_attribute_str(m)))
+                        to_file.write("    %s %s%s;\n" % (
+                            m.type.spelling, m.displayname, get_field_attribute_str(m)))
         to_file.write("}  __attribute__ ((ms_struct));\n")
         to_file.write("#pragma pack( pop )\n")
 
@@ -1028,32 +1080,37 @@ def handle_struct(sdkver, struct):
             return
         converted_structs.append(struct_name)
 
-        w2l_handler_name = "win_to_lin_struct_%s" % struct_name;
-        l2w_handler_name = "lin_to_win_struct_%s" % struct_name;
+        w2l_handler_name = "win_to_lin_struct_%s" % struct_name
+        l2w_handler_name = "lin_to_win_struct_%s" % struct_name
         l2w_handler_name64 = None
 
-        hfile.write("#if defined(SDKVER_%s) || !defined(__cplusplus)\n" % sdkver)
+        hfile.write(
+            "#if defined(SDKVER_%s) || !defined(__cplusplus)\n" % sdkver)
         dump_win_struct(hfile, struct_name)
-        hfile.write("typedef struct win%s win%s;\n" % (struct_name, struct_name))
-        hfile.write("struct %s;\n" % struct.displayname);
+        hfile.write("typedef struct win%s win%s;\n" %
+                    (struct_name, struct_name))
+        hfile.write("struct %s;\n" % struct.displayname)
 
         if strip_const(struct.spelling) in manually_handled_structs:
             hfile.write("#endif\n\n")
             return
 
-        hfile.write("extern void %s(const struct win%s *w, struct %s *l);\n" % (w2l_handler_name, struct_name, struct.displayname))
-        hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" % (l2w_handler_name, struct.displayname, struct_name))
+        hfile.write("extern void %s(const struct win%s *w, struct %s *l);\n" %
+                    (w2l_handler_name, struct_name, struct.displayname))
+        hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" %
+                    (l2w_handler_name, struct.displayname, struct_name))
         hfile.write("#endif\n\n")
     else:
-        #for callbacks, we use the windows struct size in the cb dispatch switch
+        # for callbacks, we use the windows struct size in the cb dispatch switch
         windows_struct = find_windows_struct(struct.type)
         windows_struct64 = find_windows64_struct(struct.type)
         struct64 = find_linux64_struct(struct.type)
         struct_name = "%s_%s" % (struct.displayname, windows_struct.get_size())
-        l2w_handler_name = "cb_%s" % struct_name;
+        l2w_handler_name = "cb_%s" % struct_name
         if windows_struct64.get_size() != windows_struct.get_size():
-            struct_name64 = "%s_%s" % (struct.displayname, windows_struct64.get_size())
-            l2w_handler_name64 = "cb_%s" % struct_name64;
+            struct_name64 = "%s_%s" % (
+                struct.displayname, windows_struct64.get_size())
+            l2w_handler_name64 = "cb_%s" % struct_name64
         else:
             l2w_handler_name64 = None
         if l2w_handler_name in generated_cb_handlers:
@@ -1073,14 +1130,17 @@ def handle_struct(sdkver, struct):
         datfile = open("cb_converters.dat", "a")
         if l2w_handler_name64:
             datfile.write("#ifdef __i386__\n")
-            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" % (cb_id, windows_struct.get_size(), l2w_handler_name))
+            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" %
+                          (cb_id, windows_struct.get_size(), l2w_handler_name))
             datfile.write("#endif\n")
 
             datfile.write("#ifdef __x86_64__\n")
-            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" % (cb_id64, windows_struct64.get_size(), l2w_handler_name64))
+            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" %
+                          (cb_id64, windows_struct64.get_size(), l2w_handler_name64))
             datfile.write("#endif\n")
         else:
-            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" % (cb_id, windows_struct.get_size(), l2w_handler_name))
+            datfile.write("case 0x%08x: win_msg->m_cubParam = %s; win_msg->m_pubParam = HeapAlloc(GetProcessHeap(), 0, win_msg->m_cubParam); %s((void*)lin_msg.m_pubParam, (void*)win_msg->m_pubParam); break;\n" %
+                          (cb_id, windows_struct.get_size(), l2w_handler_name))
 
         generated_cb_handlers.append(l2w_handler_name)
 
@@ -1093,24 +1153,29 @@ def handle_struct(sdkver, struct):
                 cb_table64[cb_num] = (struct.type.get_size(), [])
         cb_table[cb_num][1].append((windows_struct.get_size(), struct_name))
         if l2w_handler_name64:
-            cb_table64[cb_num][1].append((windows_struct64.get_size(), struct_name64))
+            cb_table64[cb_num][1].append(
+                (windows_struct64.get_size(), struct_name64))
         else:
-            cb_table64[cb_num][1].append((windows_struct.get_size(), struct_name))
+            cb_table64[cb_num][1].append(
+                (windows_struct.get_size(), struct_name))
 
         hfile = open("cb_converters.h", "a")
         hfile.write("struct %s;\n" % struct.displayname)
         if l2w_handler_name64:
             hfile.write("#ifdef __i386__\n")
             hfile.write("struct win%s;\n" % struct_name)
-            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" % (l2w_handler_name, struct.displayname, struct_name))
+            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" %
+                        (l2w_handler_name, struct.displayname, struct_name))
             hfile.write("#endif\n")
             hfile.write("#ifdef __x86_64__\n")
             hfile.write("struct win%s;\n" % struct_name64)
-            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" % (l2w_handler_name64, struct.displayname, struct_name64))
+            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n" %
+                        (l2w_handler_name64, struct.displayname, struct_name64))
             hfile.write("#endif\n\n")
         else:
             hfile.write("struct win%s;\n" % struct_name)
-            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n\n" % (l2w_handler_name, struct.displayname, struct_name))
+            hfile.write("extern void %s(const struct %s *l, struct win%s *w);\n\n" %
+                        (l2w_handler_name, struct.displayname, struct_name))
 
     cppname = "struct_converters_%s.cpp" % sdkver
     file_exists = os.path.isfile(cppname)
@@ -1120,15 +1185,20 @@ def handle_struct(sdkver, struct):
         cppfile.write("#pragma push_macro(\"__cdecl\")\n")
         cppfile.write("#undef __cdecl\n")
         cppfile.write("#include \"steamworks_sdk_%s/steam_api.h\"\n" % sdkver)
-        cppfile.write("#include \"steamworks_sdk_%s/isteamgameserver.h\"\n" % (sdkver))
+        cppfile.write(
+            "#include \"steamworks_sdk_%s/isteamgameserver.h\"\n" % (sdkver))
         if os.path.isfile("steamworks_sdk_%s/isteamnetworkingsockets.h" % sdkver):
-            cppfile.write("#include \"steamworks_sdk_%s/isteamnetworkingsockets.h\"\n" % (sdkver))
+            cppfile.write(
+                "#include \"steamworks_sdk_%s/isteamnetworkingsockets.h\"\n" % (sdkver))
         if os.path.isfile("steamworks_sdk_%s/isteamgameserverstats.h" % sdkver):
-            cppfile.write("#include \"steamworks_sdk_%s/isteamgameserverstats.h\"\n" % (sdkver))
+            cppfile.write(
+                "#include \"steamworks_sdk_%s/isteamgameserverstats.h\"\n" % (sdkver))
         if os.path.isfile("steamworks_sdk_%s/isteamgamecoordinator.h" % sdkver):
-            cppfile.write("#include \"steamworks_sdk_%s/isteamgamecoordinator.h\"\n" % sdkver)
+            cppfile.write(
+                "#include \"steamworks_sdk_%s/isteamgamecoordinator.h\"\n" % sdkver)
         if os.path.isfile("steamworks_sdk_%s/steamnetworkingtypes.h" % sdkver):
-            cppfile.write("#include \"steamworks_sdk_%s/steamnetworkingtypes.h\"\n" % sdkver)
+            cppfile.write(
+                "#include \"steamworks_sdk_%s/steamnetworkingtypes.h\"\n" % sdkver)
         cppfile.write("#pragma pop_macro(\"__cdecl\")\n")
         cppfile.write("#include \"steamclient_private.h\"\n")
         cppfile.write("extern \"C\" {\n")
@@ -1142,21 +1212,25 @@ def handle_struct(sdkver, struct):
         if m.kind != clang.cindex.CursorKind.FIELD_DECL:
             return
         if m.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
-            assert(m.type.element_type.kind != clang.cindex.TypeKind.RECORD or \
-                    not struct_needs_conversion(m.type.element_type))
-            cppfile.write("    memcpy(%s->%s, %s->%s, sizeof(%s->%s));\n" % (dst, m.displayname, src, m.displayname, dst, m.displayname))
+            assert(m.type.element_type.kind != clang.cindex.TypeKind.RECORD or
+                   not struct_needs_conversion(m.type.element_type))
+            cppfile.write("    memcpy(%s->%s, %s->%s, sizeof(%s->%s));\n" %
+                          (dst, m.displayname, src, m.displayname, dst, m.displayname))
         elif m.type.kind == clang.cindex.TypeKind.RECORD and \
                 struct_needs_conversion(m.type):
-            cppfile.write("    %s_to_%s_struct_%s_%s(&%s->%s, &%s->%s);\n" % (src, dst, m.type.spelling, sdkver, src, m.displayname, dst, m.displayname))
+            cppfile.write("    %s_to_%s_struct_%s_%s(&%s->%s, &%s->%s);\n" %
+                          (src, dst, m.type.spelling, sdkver, src, m.displayname, dst, m.displayname))
         elif path_conv and m.displayname in path_conv["l2w_names"]:
             for i in range(len(path_conv["l2w_names"])):
                 if path_conv["l2w_names"][i] == m.displayname:
                     url = path_conv["l2w_urls"][i]
                     break
-            cppfile.write("    steamclient_unix_path_to_dos_path(1, %s->%s, g_tmppath, sizeof(g_tmppath), %s);\n" % (src, m.displayname, to_c_bool(url)))
+            cppfile.write("    steamclient_unix_path_to_dos_path(1, %s->%s, g_tmppath, sizeof(g_tmppath), %s);\n" %
+                          (src, m.displayname, to_c_bool(url)))
             cppfile.write("    %s->%s = g_tmppath;\n" % (dst, m.displayname))
         else:
-            cppfile.write("    %s->%s = %s->%s;\n" % (dst, m.displayname, src, m.displayname))
+            cppfile.write("    %s->%s = %s->%s;\n" %
+                          (dst, m.displayname, src, m.displayname))
 
     if not cb_num is None:
         if l2w_handler_name64:
@@ -1170,14 +1244,16 @@ def handle_struct(sdkver, struct):
             dump_win_struct(cppfile, struct_name)
 
     if w2l_handler_name:
-        cppfile.write("void %s(const struct win%s *win, struct %s *lin)\n{\n" % (w2l_handler_name, struct_name, struct.displayname))
+        cppfile.write("void %s(const struct win%s *win, struct %s *lin)\n{\n" % (
+            w2l_handler_name, struct_name, struct.displayname))
         for m in struct.get_children():
             handle_field(m, "win", "lin")
         cppfile.write("}\n\n")
 
     if l2w_handler_name64:
         cppfile.write("#ifdef __x86_64__\n")
-        cppfile.write("void %s(const struct %s *lin, struct win%s *win)\n{\n" % (l2w_handler_name64, struct.displayname, struct_name64))
+        cppfile.write("void %s(const struct %s *lin, struct win%s *win)\n{\n" % (
+            l2w_handler_name64, struct.displayname, struct_name64))
         for m in struct.get_children():
             handle_field(m, "lin", "win")
         cppfile.write("}\n")
@@ -1186,7 +1262,8 @@ def handle_struct(sdkver, struct):
     if l2w_handler_name:
         if l2w_handler_name64:
             cppfile.write("#ifdef __i386__\n")
-        cppfile.write("void %s(const struct %s *lin, struct win%s *win)\n{\n" % (l2w_handler_name, struct.displayname, struct_name))
+        cppfile.write("void %s(const struct %s *lin, struct win%s *win)\n{\n" % (
+            l2w_handler_name, struct.displayname, struct_name))
         for m in struct.get_children():
             handle_field(m, "lin", "win")
         cppfile.write("}\n")
@@ -1194,6 +1271,7 @@ def handle_struct(sdkver, struct):
             cppfile.write("#endif\n\n")
         else:
             cppfile.write("\n")
+
 
 prog = re.compile("^#define\s*(\w*)\s*\"(.*)\"")
 for sdkver in sdk_versions:
@@ -1213,16 +1291,20 @@ for sdkver in sdk_versions:
         if not os.path.isfile(input_name):
             continue
         index = clang.cindex.Index.create()
-        linux_build = index.parse(input_name, args=['-x', 'c++', '-m32', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
-        linux_build64 = index.parse(input_name, args=['-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
+        linux_build = index.parse(input_name, args=[
+                                  '-x', 'c++', '-m32', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
+        linux_build64 = index.parse(input_name, args=[
+                                    '-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
 
         diagnostics = list(linux_build.diagnostics)
         if diagnostics:
             print('There were parse errors')
             pprint.pprint(diagnostics)
         else:
-            windows_build = index.parse(input_name, args=['-x', 'c++', '-m32', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
-            windows_build64 = index.parse(input_name, args=['-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
+            windows_build = index.parse(input_name, args=['-x', 'c++', '-m32', '-Isteamworks_sdk_%s/' % sdkver,
+                                                          '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
+            windows_build64 = index.parse(input_name, args=['-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver,
+                                                            '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
             diagnostics = list(windows_build.diagnostics)
             if diagnostics:
                 print('There were parse errors (windows build)')
@@ -1238,7 +1320,8 @@ for sdkver in sdk_versions:
                     ]:
                         handle_struct(sdkver, child)
                     if child.displayname in print_sizes:
-                        sys.stdout.write("size of %s is %u\n" % (child.displayname, child.type.get_size()))
+                        sys.stdout.write("size of %s is %u\n" % (
+                            child.displayname, child.type.get_size()))
 
 for f in cpp_files_need_close_brace:
     m = open(f, "a")
@@ -1254,9 +1337,11 @@ for cb in cb_table.keys():
     cbsizefile.write("    return %u;\n" % cb_table[cb][0])
     getapifile.write("case %u:\n" % cb)
     getapifile.write("    switch(callback_len){\n")
-    getapifile.write("    default:\n") # the first one should be the latest, should best support future SDK versions
+    # the first one should be the latest, should best support future SDK versions
+    getapifile.write("    default:\n")
     for (size, name) in cb_table[cb][1]:
-        getapifile.write("    case %s: cb_%s(lin_callback, callback); break;\n" % (size, name))
+        getapifile.write(
+            "    case %s: cb_%s(lin_callback, callback); break;\n" % (size, name))
     getapifile.write("    }\n    break;\n")
 cbsizefile.write("#endif\n")
 getapifile.write("#endif\n")
@@ -1268,9 +1353,11 @@ for cb in cb_table64.keys():
     cbsizefile.write("    return %u;\n" % cb_table64[cb][0])
     getapifile.write("case %u:\n" % cb)
     getapifile.write("    switch(callback_len){\n")
-    getapifile.write("    default:\n") # the first one should be the latest, should best support future SDK versions
+    # the first one should be the latest, should best support future SDK versions
+    getapifile.write("    default:\n")
     for (size, name) in cb_table64[cb][1]:
-        getapifile.write("    case %s: cb_%s(lin_callback, callback); break;\n" % (size, name))
+        getapifile.write(
+            "    case %s: cb_%s(lin_callback, callback); break;\n" % (size, name))
     getapifile.write("    }\n    break;\n")
 cbsizefile.write("#endif\n")
 getapifile.write("#endif\n")
