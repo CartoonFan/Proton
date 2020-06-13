@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
 # script to launch Wine with the correct environment
-
 import array
 import errno
 import fcntl

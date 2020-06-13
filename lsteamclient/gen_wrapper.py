@@ -1,8 +1,6 @@
 #!/usr/bin/env python2
-
 # NOTE: If you make modifications here, consider whether they should
 # be duplicated in ../vrclient/gen_wrapper.py
-
 from __future__ import print_function
 
 import math

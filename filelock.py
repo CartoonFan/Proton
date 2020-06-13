@@ -22,12 +22,9 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 # For more information, please refer to <http://unlicense.org>
-
 """
 A platform independent file lock that supports the with-statement.
 """
-
-
 # Modules
 # ------------------------------------------------
 import logging

@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-
 # NOTE: If you make modifications here, consider whether they should
 # be duplicated in ../lsteamclient/gen_wrapper.py
-
 from __future__ import print_function
 
 import os
