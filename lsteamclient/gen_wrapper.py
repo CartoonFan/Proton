@@ -598,9 +598,9 @@ def struct_needs_conversion_nocache(struct):
     return False
 
 def struct_needs_conversion(struct):
-    if not sdkver in struct_conversion_cache:
+    if sdkver not in struct_conversion_cache:
         struct_conversion_cache[sdkver] = {}
-    if not strip_const(struct.spelling) in struct_conversion_cache[sdkver]:
+    if strip_const(struct.spelling) not in struct_conversion_cache[sdkver]:
         struct_conversion_cache[sdkver][strip_const(struct.spelling)] = struct_needs_conversion_nocache(struct)
     return struct_conversion_cache[sdkver][strip_const(struct.spelling)]
 
@@ -859,14 +859,14 @@ def get_iface_version(classname):
         ver = "UNVERSIONED"
     if classname in class_versions.keys() and ver in class_versions[classname]:
         return (ver, True)
-    if not classname in class_versions.keys():
+    if classname not in class_versions.keys():
         class_versions[classname] = []
     class_versions[classname].append(ver)
     return (ver, False)
 
 def handle_class(sdkver, classnode):
     children = list(classnode.get_children())
-    if len(children) == 0:
+    if not children:
         return
     (iface_version, already_generated) = get_iface_version(classnode.spelling)
     if already_generated:
@@ -903,7 +903,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(steamclient);
     cpp.write("#include \"steamworks_sdk_%s/steam_api.h\"\n" % sdkver)
     if os.path.isfile("steamworks_sdk_%s/steamnetworkingtypes.h" % sdkver):
         cpp.write("#include \"steamworks_sdk_%s/steamnetworkingtypes.h\"\n" % sdkver)
-    if not fname == "steam_api.h":
+    if fname != "steam_api.h":
         cpp.write("#include \"steamworks_sdk_%s/%s\"\n" % (sdkver, fname))
     cpp.write("#pragma pop_macro(\"__cdecl\")\n")
     cpp.write("#include \"steamclient_private.h\"\n")
@@ -1139,23 +1139,24 @@ def handle_struct(sdkver, struct):
     path_conv = get_path_converter(struct.type)
 
     def handle_field(m, src, dst):
-        if m.kind == clang.cindex.CursorKind.FIELD_DECL:
-            if m.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
-                assert(m.type.element_type.kind != clang.cindex.TypeKind.RECORD or \
-                        not struct_needs_conversion(m.type.element_type))
-                cppfile.write("    memcpy(%s->%s, %s->%s, sizeof(%s->%s));\n" % (dst, m.displayname, src, m.displayname, dst, m.displayname))
-            elif m.type.kind == clang.cindex.TypeKind.RECORD and \
-                    struct_needs_conversion(m.type):
-                cppfile.write("    %s_to_%s_struct_%s_%s(&%s->%s, &%s->%s);\n" % (src, dst, m.type.spelling, sdkver, src, m.displayname, dst, m.displayname))
-            elif path_conv and m.displayname in path_conv["l2w_names"]:
-                for i in range(len(path_conv["l2w_names"])):
-                    if path_conv["l2w_names"][i] == m.displayname:
-                        url = path_conv["l2w_urls"][i]
-                        break
-                cppfile.write("    steamclient_unix_path_to_dos_path(1, %s->%s, g_tmppath, sizeof(g_tmppath), %s);\n" % (src, m.displayname, to_c_bool(url)))
-                cppfile.write("    %s->%s = g_tmppath;\n" % (dst, m.displayname))
-            else:
-                cppfile.write("    %s->%s = %s->%s;\n" % (dst, m.displayname, src, m.displayname))
+        if m.kind != clang.cindex.CursorKind.FIELD_DECL:
+            return
+        if m.type.kind == clang.cindex.TypeKind.CONSTANTARRAY:
+            assert(m.type.element_type.kind != clang.cindex.TypeKind.RECORD or \
+                    not struct_needs_conversion(m.type.element_type))
+            cppfile.write("    memcpy(%s->%s, %s->%s, sizeof(%s->%s));\n" % (dst, m.displayname, src, m.displayname, dst, m.displayname))
+        elif m.type.kind == clang.cindex.TypeKind.RECORD and \
+                struct_needs_conversion(m.type):
+            cppfile.write("    %s_to_%s_struct_%s_%s(&%s->%s, &%s->%s);\n" % (src, dst, m.type.spelling, sdkver, src, m.displayname, dst, m.displayname))
+        elif path_conv and m.displayname in path_conv["l2w_names"]:
+            for i in range(len(path_conv["l2w_names"])):
+                if path_conv["l2w_names"][i] == m.displayname:
+                    url = path_conv["l2w_urls"][i]
+                    break
+            cppfile.write("    steamclient_unix_path_to_dos_path(1, %s->%s, g_tmppath, sizeof(g_tmppath), %s);\n" % (src, m.displayname, to_c_bool(url)))
+            cppfile.write("    %s->%s = g_tmppath;\n" % (dst, m.displayname))
+        else:
+            cppfile.write("    %s->%s = %s->%s;\n" % (dst, m.displayname, src, m.displayname))
 
     if not cb_num is None:
         if l2w_handler_name64:
@@ -1216,14 +1217,14 @@ for sdkver in sdk_versions:
         linux_build64 = index.parse(input_name, args=['-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/'])
 
         diagnostics = list(linux_build.diagnostics)
-        if len(diagnostics) > 0:
+        if diagnostics:
             print('There were parse errors')
             pprint.pprint(diagnostics)
         else:
             windows_build = index.parse(input_name, args=['-x', 'c++', '-m32', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
             windows_build64 = index.parse(input_name, args=['-x', 'c++', '-Isteamworks_sdk_%s/' % sdkver, '-I' + CLANG_PATH + '/include/', '-mms-bitfields', '-U__linux__', '-Wno-incompatible-ms-struct'])
             diagnostics = list(windows_build.diagnostics)
-            if len(diagnostics) > 0:
+            if diagnostics:
                 print('There were parse errors (windows build)')
                 pprint.pprint(diagnostics)
             else:
@@ -1231,8 +1232,10 @@ for sdkver in sdk_versions:
                 for child in children:
                     if child.kind == clang.cindex.CursorKind.CLASS_DECL and child.displayname in classes:
                         handle_class(sdkver, child)
-                    if child.kind == clang.cindex.CursorKind.STRUCT_DECL or \
-                            child.kind == clang.cindex.CursorKind.CLASS_DECL:
+                    if child.kind in [
+                        clang.cindex.CursorKind.STRUCT_DECL,
+                        clang.cindex.CursorKind.CLASS_DECL,
+                    ]:
                         handle_struct(sdkver, child)
                     if child.displayname in print_sizes:
                         sys.stdout.write("size of %s is %u\n" % (child.displayname, child.type.get_size()))

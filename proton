@@ -109,9 +109,11 @@ class Proton:
 
     def need_tarball_extraction(self):
         '''Checks if the proton_dist tarball archive must be extracted. Returns true if extraction is needed, false otherwise'''
-        return not os.path.exists(self.dist_dir) or \
-            not os.path.exists(self.path("dist/version")) or \
-            not filecmp.cmp(self.version_file, self.path("dist/version"))
+        return not (
+            os.path.exists(self.dist_dir)
+            and os.path.exists(self.path("dist/version"))
+            and filecmp.cmp(self.version_file, self.path("dist/version"))
+        )
 
     def extract_tarball(self):
         with self.dist_lock:
@@ -136,8 +138,8 @@ class Proton:
 
     def make_default_prefix(self):
         with self.dist_lock:
-            local_env = dict(g_session.env)
             if self.missing_default_prefix():
+                local_env = dict(g_session.env)
                 #make default prefix
                 local_env["WINEPREFIX"] = self.default_pfx_dir
                 local_env["WINEDEBUG"] = "-all"
@@ -188,7 +190,7 @@ class CompatData:
         if old_ver is None:
             return
 
-        if not '-' in old_ver:
+        if '-' not in old_ver:
             #How can this happen??
             log("Prefix has an invalid version?! You may want to back up user files and delete this prefix.")
             #If it does, just let the Wine upgrade happen and hope it works...
@@ -210,12 +212,17 @@ class CompatData:
                 self.remove_tracked_files()
                 return
 
-            if old_proton_ver == "3.7" and old_prefix_ver == "1":
-                if not os.path.exists(self.prefix_dir + "/drive_c/windows/syswow64/kernel32.dll"):
-                    #shipped a busted 64-bit-only installation on 20180822. detect and wipe clean
-                    log("Detected broken 64-bit-only installation, re-creating prefix.")
-                    shutil.rmtree(self.prefix_dir)
-                    return
+            if (
+                old_proton_ver == "3.7"
+                and old_prefix_ver == "1"
+                and not os.path.exists(
+                    self.prefix_dir + "/drive_c/windows/syswow64/kernel32.dll"
+                )
+            ):
+                #shipped a busted 64-bit-only installation on 20180822. detect and wipe clean
+                log("Detected broken 64-bit-only installation, re-creating prefix.")
+                shutil.rmtree(self.prefix_dir)
+                return
 
             #replace broken .NET installations with wine-mono support
             if os.path.exists(self.prefix_dir + "/drive_c/windows/Microsoft.NET/NETFXRepair.exe") and \
@@ -242,14 +249,10 @@ class CompatData:
                     os.rename(self.prefix_dir + "system.reg", self.prefix_dir + "system.reg.old")
                 except OSError:
                     os.remove(self.prefix_dir + "system.reg")
-                    pass
-
                 try:
                     os.rename(self.prefix_dir + "system.reg.new", self.prefix_dir + "system.reg")
                 except OSError:
                     log("Unable to write new registry file to " + self.prefix_dir + "system.reg")
-                    pass
-
         except ValueError:
             log("Prefix has an invalid version?! You may want to back up user files and delete this prefix.")
             #Just let the Wine upgrade happen and hope it works...
@@ -378,7 +381,7 @@ def comma_escaped(s):
     idx = -1
     while s[idx] == '\\':
         escaped = not escaped
-        idx = idx - 1
+        idx -= 1
     return escaped
 
 class Session:
@@ -408,7 +411,7 @@ class Session:
                     self.compat_config.add(cur)
 
         #turn forcelgadd on by default unless it is disabled in compat config
-        if not "noforcelgadd" in self.compat_config:
+        if "noforcelgadd" not in self.compat_config:
             self.compat_config.add("forcelgadd")
 
     def init_wine(self):
@@ -442,7 +445,7 @@ class Session:
             self.env["PATH"] = g_proton.bin_dir
 
     def check_environment(self, env_name, config_name):
-        if not env_name in self.env:
+        if env_name not in self.env:
             return False
         if nonzero(self.env[env_name]):
             self.compat_config.add(config_name)
@@ -550,10 +553,7 @@ class Session:
         s = ""
         for dll in self.dlloverrides:
             setting = self.dlloverrides[dll]
-            if len(s) > 0:
-                s = s + ";" + dll + "=" + setting
-            else:
-                s = dll + "=" + setting
+            s = s + ";" + dll + "=" + setting if len(s) > 0 else dll + "=" + setting
         if "WINEDLLOVERRIDES" in os.environ:
             self.env["WINEDLLOVERRIDES"] = os.environ["WINEDLLOVERRIDES"] + ";" + s
         else:
@@ -676,7 +676,7 @@ class Session:
 
 
 if __name__ == "__main__":
-    if not "STEAM_COMPAT_DATA_PATH" in os.environ:
+    if "STEAM_COMPAT_DATA_PATH" not in os.environ:
         log("No compat data path?")
         sys.exit(1)
 
