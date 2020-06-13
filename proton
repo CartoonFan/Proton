@@ -2,13 +2,13 @@
 
 # script to launch Wine with the correct environment
 
-import fcntl
 import array
+import errno
+import fcntl
 import filecmp
 import json
 import os
 import shutil
-import errno
 import subprocess
 import sys
 import tarfile

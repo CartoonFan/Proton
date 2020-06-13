@@ -5,11 +5,12 @@
 
 from __future__ import print_function
 
-import re
 import os
-import clang.cindex
-import sys
 import pprint
+import re
+import sys
+
+import clang.cindex
 
 CLANG_PATH = "/usr/lib/clang/9.0.1"
 
